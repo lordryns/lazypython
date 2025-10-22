@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -28,14 +30,22 @@ type model struct {
 	window           dimension
 	err              error
 	loadingState     bool
+	spinner          spinner.Model
+}
+
+func updateSpinnerType(m *model) {
+	var spinners = []spinner.Spinner{spinner.Dot, spinner.Globe, spinner.Line, spinner.MiniDot, spinner.Jump, spinner.Ellipsis, spinner.Hamburger, spinner.Meter, spinner.Monkey, spinner.Moon, spinner.Points, spinner.Pulse}
+	m.spinner.Spinner = spinners[rand.Intn(len(spinners)-1)]
 }
 
 func initialize() model {
-	return model{}
+	var _spinner = spinner.New()
+	_spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
+	return model{spinner: _spinner}
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return m.spinner.Tick
 }
 
 type LoadedPythonManager struct {
@@ -66,10 +76,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, fetchPackagesAsync()
 
 	case LoadedPythonManager:
+		updateSpinnerType(&m)
 		drawPythonPackageTable(&m, msg.pacman)
 		m.err = msg.err
 		m.loadingState = false
 		m.showPackageTable = true
+
+	default:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 	}
 
 	if m.showPackageTable {
@@ -89,7 +105,7 @@ func (m model) View() string {
 	}
 
 	if m.loadingState {
-		return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center, lipgloss.Center).Render("Loading...")
+		return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center, lipgloss.Center).Render(fmt.Sprintf("%s Loading...", m.spinner.View()))
 	}
 	return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center).
 		Render(fmt.Sprintf("%v\n%v", getPythonVersion(), m.packageTable.View()))
