@@ -1,44 +1,31 @@
 package main
 
 import (
-	"encoding/json"
+	"bufio"
 	"net/http"
 	"strings"
+
+	"github.com/k3a/html2text"
 )
 
-type GolangIndexPackage struct {
-	Path      string
-	Version   string
-	Timestamp string
-}
-
-var GolangPackages []GolangIndexPackage
+var pythonPackages []string
 
 func fetchPackagesFromIndex() {
-	var response, err = http.Get("https://index.golang.org/index?include=all")
+	var response, err = http.Get("https://pypi.org/simple/")
 	if err != nil {
 		return
 	}
 
-	var decoder = json.NewDecoder(response.Body)
-	for decoder.More() {
-		var pkg GolangIndexPackage
-		if err := decoder.Decode(&pkg); err == nil {
-			GolangPackages = append(GolangPackages, pkg)
-		}
-	}
-
 	defer response.Body.Close()
-}
+	var scanner = bufio.NewScanner(response.Body)
 
-func filterGolangPackages(name string) []GolangIndexPackage {
-	var pkgs []GolangIndexPackage
-
-	for _, pkg := range GolangPackages {
-		if strings.Contains(pkg.Path, name) {
-			pkgs = append(pkgs, pkg)
+	for scanner.Scan() {
+		var plain = html2text.HTML2Text(scanner.Text())
+		var split = strings.Split(plain, "/")
+		if len(split) > 2 {
+			pythonPackages = append(pythonPackages, split[2])
 		}
+
 	}
 
-	return pkgs
 }

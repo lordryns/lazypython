@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -25,26 +26,43 @@ type dimension struct {
 	height int
 }
 type model struct {
-	packageTable     table.Model
-	showPackageTable bool
-	window           dimension
-	err              error
-	loadingState     bool
-	spinner          spinner.Model
-	info             string
-	managerInUse     string
-	openHelpMenu     bool
+	packageTable                table.Model
+	showPackageTable            bool
+	window                      dimension
+	err                         error
+	loadingState                bool
+	spinner                     spinner.Model
+	info                        string
+	managerInUse                string
+	openHelpMenu                bool
+	openPackageInstallScreen    bool
+	packageInput                textinput.Model
+	showHomeScreen              bool
+	filteredPackages            []string
+	remotePackageTable          table.Model
+	focusedOnRemotePackageTable bool
+	remotePackageTableIndex     int
 }
 
 func updateSpinnerType(m *model) {
 	var spinners = []spinner.Spinner{spinner.Dot, spinner.Globe, spinner.Line, spinner.MiniDot, spinner.Jump, spinner.Ellipsis, spinner.Hamburger, spinner.Meter, spinner.Monkey, spinner.Moon, spinner.Points, spinner.Pulse}
-	m.spinner.Spinner = spinners[rand.Intn(len(spinners)-1)]
+	var gen = rand.Intn(len(spinners) - 1)
+	m.spinner.Spinner = spinners[gen]
 }
 
 func initialize() model {
+	go fetchPackagesFromIndex()
+
 	var _spinner = spinner.New()
 	_spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-	return model{spinner: _spinner, info: "Hello from Lazypython"}
+
+	var installEntry = textinput.New()
+	installEntry.CharLimit = -1
+	installEntry.Focus()
+	installEntry.Placeholder = "Enter package name..."
+	var m = model{spinner: _spinner, info: "Hello from Lazypython", packageInput: installEntry, showHomeScreen: true}
+	updateSpinnerType(&m)
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -72,10 +90,61 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+h":
 			m.openHelpMenu = !m.openHelpMenu
+			m.showPackageTable = false
+			if m.openHelpMenu {
+				m.showHomeScreen = true
+			}
+
+		case "ctrl+p":
+			m.openPackageInstallScreen = !m.openPackageInstallScreen
+			m.showPackageTable = false
+			drawPythonRemotePackagesTable(&m, pythonPackages)
+			if m.openPackageInstallScreen {
+				m.showHomeScreen = true
+			}
 
 		case "esc":
 			if m.openHelpMenu {
 				m.openHelpMenu = false
+			}
+			if m.openPackageInstallScreen {
+				m.openPackageInstallScreen = false
+			}
+
+			if !m.openHelpMenu || !m.openPackageInstallScreen {
+				m.showHomeScreen = true
+			}
+
+		case "down":
+			if m.openPackageInstallScreen {
+				if m.packageInput.Focused() {
+					m.packageInput.Blur()
+					m.remotePackageTable.Focus()
+					m.focusedOnRemotePackageTable = true
+				}
+
+			}
+
+		case "up":
+			if m.openPackageInstallScreen {
+				if m.remotePackageTable.Cursor() < 1 && m.remotePackageTable.Focused() {
+					m.focusedOnRemotePackageTable = false
+					m.remotePackageTable.Blur()
+					m.packageInput.Focus()
+				}
+			}
+
+		case "tab":
+			if m.openPackageInstallScreen {
+				if m.packageInput.Focused() {
+					m.packageInput.Blur()
+					m.remotePackageTable.Focus()
+				} else {
+					m.packageInput.Focus()
+					m.remotePackageTable.Blur()
+				}
+
+				m.focusedOnRemotePackageTable = !m.focusedOnRemotePackageTable
 			}
 		}
 
@@ -83,10 +152,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.window.width = msg.Width
 		m.window.height = msg.Height
 
+		if !m.showHomeScreen {
+			return m, nil
+		}
 		m.loadingState = true
 		return m, fetchPackagesAsync()
 
 	case LoadedPythonManager:
+
 		updateSpinnerType(&m)
 		drawPythonPackageTable(&m, msg.pacman)
 		m.err = msg.err
@@ -102,16 +175,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	if m.showPackageTable {
-		var cmd tea.Cmd
-		m.packageTable, cmd = m.packageTable.Update(msg)
-		return m, cmd
-	}
-	return m, nil
+	var cmd tea.Cmd
+	m.packageTable, cmd = m.packageTable.Update(msg)
+	m.packageInput, cmd = m.packageInput.Update(msg)
+	m.remotePackageTable, cmd = m.remotePackageTable.Update(msg)
+
+	return m, cmd
 }
 
 func (m model) View() string {
-	// this is for window size logic, we're returning this if the window is too small
 	if m.window.width < 60 || m.window.height < 30 {
 		return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center, lipgloss.Center).
 			Render(fmt.Sprintf("Terminal size too small!\nMust be at least 60, 30\nCurrent: %v, %v", m.window.width, m.window.height))
@@ -127,6 +199,18 @@ func (m model) View() string {
 			Render("HELP\nUse Ctrl + h or the Esc key to close this screen\nCtrl + c to exit the application\nCtrl + p to find (and install) a package")
 	}
 
+	if m.openPackageInstallScreen {
+		return drawPackageInstallScreen(&m)
+	}
+
+	if m.showHomeScreen {
+		return drawHomeScreen(&m)
+	}
+
+	return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center, lipgloss.Center).Render("Somehow this page showed up even though it isn't supposed to, press the Esc key to return to Home... restart if this persists.")
+}
+
+func drawHomeScreen(m *model) string {
 	var infoText = lipgloss.NewStyle().Align(lipgloss.Left).Render(m.info)
 	var helpText = lipgloss.NewStyle().Align(lipgloss.Right).Render("Use Ctrl + h to open help")
 
@@ -141,13 +225,54 @@ func (m model) View() string {
 		Render(fmt.Sprintf("%v\n%v", getPythonVersion(), m.packageTable.View()))
 
 	return fmt.Sprintf("%v\n%v", tableAndHeader, bottomText)
+}
+func drawPackageInstallScreen(m *model) string {
+	m.packageInput.Width = m.window.width
+	var inputStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("63")).
+		Padding(0, 1).
+		Width(m.window.width - 5).
+		Render(m.packageInput.View())
 
+	return lipgloss.NewStyle().Width(m.window.width).AlignHorizontal(lipgloss.Center).
+		Render(fmt.Sprintf("%v\n%v\n", inputStyle, m.remotePackageTable.View()))
 }
 
 func main() {
 	if _, err := tea.NewProgram(initialize(), tea.WithAltScreen()).Run(); err != nil {
 		panic(err)
 	}
+}
+
+func drawPythonRemotePackagesTable(m *model, pkgs []string) {
+	columns := []table.Column{
+		{Title: "Package", Width: m.window.width / 2},
+	}
+
+	var rows []table.Row
+	for _, pack := range pkgs {
+		rows = append(rows, table.Row{pack})
+	}
+
+	m.remotePackageTable = table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(true),
+		table.WithHeight(m.window.height/2),
+	)
+
+	style := table.DefaultStyles()
+	style.Header = style.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(false)
+	style.Selected = style.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+	m.remotePackageTable.SetStyles(style)
 }
 
 func drawPythonPackageTable(m *model, pman pythonManager) {
