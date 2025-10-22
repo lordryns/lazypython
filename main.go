@@ -108,6 +108,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "ctrl+p":
+			drawPythonRemotePackagesTable(&m, m.filteredPackages)
 			m.openPackageInstallScreen = !m.openPackageInstallScreen
 			m.showPackageTable = false
 			if m.openPackageInstallScreen {
@@ -187,6 +188,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 
+		updateRemotePackageTable(&m, m.filteredPackages)
 		if !m.remotePackagesIndexedSuccessfully {
 			m.info = fmt.Sprintf("%v Indexing remote packages on PYPI...", m.spinner.View())
 		}
@@ -200,10 +202,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.filteredPackages = append(m.filteredPackages, pkg)
 						}
 					}
+					m.remotePackageTable.SetCursor(0)
 				}
 			}
 
-			drawPythonRemotePackagesTable(&m, m.filteredPackages)
 		}
 		return m, cmd
 	}
@@ -276,6 +278,14 @@ func main() {
 	if _, err := tea.NewProgram(initialize(), tea.WithAltScreen()).Run(); err != nil {
 		panic(err)
 	}
+}
+
+func updateRemotePackageTable(m *model, pkgs []string) {
+	var rows []table.Row
+	for _, pkg := range pkgs {
+		rows = append(rows, table.Row{pkg})
+	}
+	m.remotePackageTable.SetRows(rows)
 }
 
 func drawPythonRemotePackagesTable(m *model, pkgs []string) {
