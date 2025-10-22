@@ -33,6 +33,7 @@ type model struct {
 	spinner          spinner.Model
 	info             string
 	managerInUse     string
+	openHelpMenu     bool
 }
 
 func updateSpinnerType(m *model) {
@@ -68,6 +69,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+
+		case "ctrl+h":
+			m.openHelpMenu = !m.openHelpMenu
+
+		case "esc":
+			if m.openHelpMenu {
+				m.openHelpMenu = false
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -113,8 +122,13 @@ func (m model) View() string {
 		return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center, lipgloss.Center).Render(fmt.Sprintf("%s Loading...", m.spinner.View()))
 	}
 
+	if m.openHelpMenu {
+		return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center, lipgloss.Center).
+			Render("HELP\nUse Ctrl + h or the Esc key to close this screen\nCtrl + c to exit the application\nCtrl + p to find (and install) a package")
+	}
+
 	var infoText = lipgloss.NewStyle().Align(lipgloss.Left).Render(m.info)
-	var helpText = lipgloss.NewStyle().Align(lipgloss.Right).Render("Use Ctrl + c to quit")
+	var helpText = lipgloss.NewStyle().Align(lipgloss.Right).Render("Use Ctrl + h to open help")
 
 	jointText := lipgloss.JoinHorizontal(lipgloss.Top,
 		lipgloss.NewStyle().Width(m.window.width/2).Render(infoText),
