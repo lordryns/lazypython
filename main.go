@@ -107,8 +107,21 @@ func (m model) View() string {
 	if m.loadingState {
 		return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center, lipgloss.Center).Render(fmt.Sprintf("%s Loading...", m.spinner.View()))
 	}
-	return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center).
+
+	var infoText = lipgloss.NewStyle().Align(lipgloss.Left).Render("Hello from Lazypython!")
+	var helpText = lipgloss.NewStyle().Align(lipgloss.Right).Render("Use Ctrl + c to quit")
+
+	jointText := lipgloss.JoinHorizontal(lipgloss.Top,
+		lipgloss.NewStyle().Width(m.window.width/2).Render(infoText),
+		lipgloss.NewStyle().Width(m.window.width/2).Align(lipgloss.Right).Render(helpText),
+	)
+
+	var bottomText = lipgloss.NewStyle().Width(m.window.width).Height(m.window.height / 2).AlignVertical(lipgloss.Bottom).Render(jointText)
+
+	var tableAndHeader = lipgloss.NewStyle().Width(m.window.width).Align(lipgloss.Center).
 		Render(fmt.Sprintf("%v\n%v", getPythonVersion(), m.packageTable.View()))
+
+	return fmt.Sprintf("%v\n%v", tableAndHeader, bottomText)
 
 }
 
