@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
@@ -26,23 +27,26 @@ type dimension struct {
 	height int
 }
 type model struct {
-	packageTable                table.Model
-	showPackageTable            bool
-	window                      dimension
-	err                         error
-	loadingState                bool
-	spinner                     spinner.Model
-	info                        string
-	managerInUse                string
-	openHelpMenu                bool
-	openPackageInstallScreen    bool
-	packageInput                textinput.Model
-	showHomeScreen              bool
-	filteredPackages            []string
-	remotePackageTable          table.Model
-	focusedOnRemotePackageTable bool
-	remotePackageTableIndex     int
+	packageTable                      table.Model
+	showPackageTable                  bool
+	window                            dimension
+	err                               error
+	loadingState                      bool
+	spinner                           spinner.Model
+	info                              string
+	managerInUse                      string
+	openHelpMenu                      bool
+	openPackageInstallScreen          bool
+	packageInput                      textinput.Model
+	showHomeScreen                    bool
+	filteredPackages                  []string
+	remotePackageTable                table.Model
+	focusedOnRemotePackageTable       bool
+	remotePackageTableIndex           int
+	remotePackagesIndexedSuccessfully bool
 }
+
+type InfoMsg string
 
 func updateSpinnerType(m *model) {
 	var spinners = []spinner.Spinner{spinner.Dot, spinner.Globe, spinner.Line, spinner.MiniDot, spinner.Jump, spinner.Ellipsis, spinner.Hamburger, spinner.Meter, spinner.Monkey, spinner.Moon, spinner.Points, spinner.Pulse}
@@ -51,7 +55,6 @@ func updateSpinnerType(m *model) {
 }
 
 func initialize() model {
-	go fetchPackagesFromIndex()
 
 	var _spinner = spinner.New()
 	_spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
@@ -62,16 +65,25 @@ func initialize() model {
 	installEntry.Placeholder = "Enter package name..."
 	var m = model{spinner: _spinner, info: "Hello from Lazypython", packageInput: installEntry, showHomeScreen: true}
 	updateSpinnerType(&m)
+
 	return m
 }
 
 func (m model) Init() tea.Cmd {
-	return m.spinner.Tick
+	return tea.Batch(m.spinner.Tick, fetchPackagesFromindexAsync(&m))
 }
 
 type LoadedPythonManager struct {
 	pacman pythonManager
 	err    error
+}
+
+func fetchPackagesFromindexAsync(m *model) tea.Cmd {
+	return func() tea.Msg {
+		fetchPackagesFromIndex()
+		m.remotePackagesIndexedSuccessfully = true
+		return InfoMsg("Remote packages indexed successfully!")
+	}
 }
 
 func fetchPackagesAsync() tea.Cmd {
@@ -98,7 +110,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+p":
 			m.openPackageInstallScreen = !m.openPackageInstallScreen
 			m.showPackageTable = false
-			drawPythonRemotePackagesTable(&m, pythonPackages)
 			if m.openPackageInstallScreen {
 				m.showHomeScreen = true
 			}
@@ -169,9 +180,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loadingState = false
 		m.showPackageTable = true
 
+	case InfoMsg:
+		m.info = string(msg)
+
 	default:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
+
+		if !m.remotePackagesIndexedSuccessfully {
+			m.info = fmt.Sprintf("%v Indexing remote packages on PYPI...", m.spinner.View())
+		}
+		if m.openPackageInstallScreen {
+			if m.packageInput.Focused() {
+				var query = strings.TrimSpace(m.packageInput.Value())
+				m.filteredPackages = nil
+				if query != "" {
+					for _, pkg := range pythonPackages {
+						if strings.Contains(pkg, query) {
+							m.filteredPackages = append(m.filteredPackages, pkg)
+						}
+					}
+				}
+			}
+
+			drawPythonRemotePackagesTable(&m, m.filteredPackages)
+		}
 		return m, cmd
 	}
 
