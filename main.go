@@ -31,6 +31,8 @@ type model struct {
 	err              error
 	loadingState     bool
 	spinner          spinner.Model
+	info             string
+	managerInUse     string
 }
 
 func updateSpinnerType(m *model) {
@@ -41,7 +43,7 @@ func updateSpinnerType(m *model) {
 func initialize() model {
 	var _spinner = spinner.New()
 	_spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-	return model{spinner: _spinner}
+	return model{spinner: _spinner, info: "Hello from Lazypython"}
 }
 
 func (m model) Init() tea.Cmd {
@@ -79,6 +81,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updateSpinnerType(&m)
 		drawPythonPackageTable(&m, msg.pacman)
 		m.err = msg.err
+		if msg.err != nil {
+			m.info = fmt.Sprintf("err: %v", msg.err.Error())
+		}
 		m.loadingState = false
 		m.showPackageTable = true
 
@@ -108,7 +113,7 @@ func (m model) View() string {
 		return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center, lipgloss.Center).Render(fmt.Sprintf("%s Loading...", m.spinner.View()))
 	}
 
-	var infoText = lipgloss.NewStyle().Align(lipgloss.Left).Render("Hello from Lazypython!")
+	var infoText = lipgloss.NewStyle().Align(lipgloss.Left).Render(m.info)
 	var helpText = lipgloss.NewStyle().Align(lipgloss.Right).Render("Use Ctrl + c to quit")
 
 	jointText := lipgloss.JoinHorizontal(lipgloss.Top,
@@ -116,7 +121,7 @@ func (m model) View() string {
 		lipgloss.NewStyle().Width(m.window.width/2).Align(lipgloss.Right).Render(helpText),
 	)
 
-	var bottomText = lipgloss.NewStyle().Width(m.window.width).Height(m.window.height / 2).AlignVertical(lipgloss.Bottom).Render(jointText)
+	var bottomText = lipgloss.NewStyle().Width(m.window.width).Height((m.window.height / 2) - 3).AlignVertical(lipgloss.Bottom).Render(jointText)
 
 	var tableAndHeader = lipgloss.NewStyle().Width(m.window.width).Align(lipgloss.Center).
 		Render(fmt.Sprintf("%v\n%v", getPythonVersion(), m.packageTable.View()))
