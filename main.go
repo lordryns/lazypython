@@ -46,6 +46,7 @@ type model struct {
 	focusedOnRemotePackageTable       bool
 	remotePackageTableIndex           int
 	remotePackagesIndexedSuccessfully bool
+	localPackages                     []pythonPackage
 }
 
 type InfoMsg string
@@ -65,7 +66,7 @@ func initialize() model {
 	installEntry.CharLimit = -1
 	installEntry.Focus()
 	installEntry.Placeholder = "Enter package name..."
-	var m = model{spinner: _spinner, info: "Hello from Lazypython", packageInput: installEntry, showHomeScreen: true}
+	var m = model{spinner: _spinner, info: "Hello from Lazypython", packageInput: installEntry, showHomeScreen: true, managerInUse: "pip"}
 	updateSpinnerType(&m)
 
 	return m
@@ -108,6 +109,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showPackageTable = false
 			if m.openHelpMenu {
 				m.showHomeScreen = true
+			}
+
+		case "p":
+			if m.showHomeScreen {
+				if m.managerInUse == "pip" {
+					m.managerInUse = "uv"
+				} else {
+					m.managerInUse = "pip"
+				}
 			}
 
 		case "ctrl+p":
@@ -177,6 +187,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		updateSpinnerType(&m)
 		drawPythonPackageTable(&m, msg.pacman)
+		m.localPackages = msg.pacman.packages
 		m.err = msg.err
 		if msg.err != nil {
 			m.info = fmt.Sprintf("err: %v", msg.err.Error())
@@ -237,7 +248,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.packageTable, cmd = m.packageTable.Update(msg)
-	m.packageInput, cmd = m.packageInput.Update(msg)
+
+	if m.openPackageInstallScreen {
+		m.packageInput, cmd = m.packageInput.Update(msg)
+	}
+
 	m.remotePackageTable, cmd = m.remotePackageTable.Update(msg)
 
 	return m, cmd
@@ -271,21 +286,74 @@ func (m model) View() string {
 }
 
 func drawHomeScreen(m *model) string {
-	var infoText = lipgloss.NewStyle().Align(lipgloss.Left).Render(m.info)
-	var helpText = lipgloss.NewStyle().Align(lipgloss.Right).Render("Use Ctrl + h to open help")
+	var borderColor = lipgloss.Color("63")
 
-	jointText := lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().Width(m.window.width/2).Render(infoText),
-		lipgloss.NewStyle().Width(m.window.width/2).Align(lipgloss.Right).Render(helpText),
+	var infoText = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("2")).
+		Render(m.info)
+
+	var helpText = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("244")).
+		Render("Press Ctrl + H for help")
+
+	var header = lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		lipgloss.NewStyle().
+			Width(m.window.width/2).Align(lipgloss.Left).Padding(0, 1).
+			Render(infoText),
+		lipgloss.NewStyle().
+			Width(m.window.width/2).
+			Align(lipgloss.Right).
+			Padding(0, 1).
+			Render(helpText),
 	)
 
-	var bottomText = lipgloss.NewStyle().Width(m.window.width).Height((m.window.height / 2) - 3).AlignVertical(lipgloss.Bottom).Render(jointText)
+	header = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).BorderForeground(borderColor).
+		Width(m.window.width - 2).Render(header)
 
-	var tableAndHeader = lipgloss.NewStyle().Width(m.window.width).Align(lipgloss.Center).
-		Render(fmt.Sprintf("%v\n%v", getPythonVersion(), m.packageTable.View()))
+	var tableView = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(1, 2).
+		Width(m.window.width/2 - 2).
+		Render(m.packageTable.View())
 
-	return fmt.Sprintf("%v\n%v", tableAndHeader, bottomText)
+	var infoFrame = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(1, 2).
+		Width(m.window.width/2 - 2).
+		Render(fmt.Sprintf("Python Version: %v\nInstalled Packages: %v\nPackage Manager: %v",
+			getPythonVersion(), len(m.localPackages), m.managerInUse))
+
+	var mainContent = lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		tableView,
+		infoFrame,
+	)
+
+	var footer = lipgloss.NewStyle().
+		Width(m.window.width - 2).
+		Align(lipgloss.Center).
+		Foreground(lipgloss.Color("240")).
+		Render("j k Navigate | Enter Select | Ctrl+c Quit")
+
+	footer = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(borderColor).
+		Render(footer)
+
+	var screen = lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		mainContent,
+		footer,
+	)
+
+	return screen
 }
+
 func drawPackageInstallScreen(m *model) string {
 	m.packageInput.Width = m.window.width
 	var inputStyle = lipgloss.NewStyle().
@@ -352,8 +420,8 @@ func drawPythonRemotePackagesTable(m *model, pkgs []string) {
 
 func drawPythonPackageTable(m *model, pman pythonManager) {
 	columns := []table.Column{
-		{Title: "Package", Width: m.window.width / 2},
-		{Title: "Version", Width: (m.window.width / 2) / 2},
+		{Title: "Package", Width: ((m.window.width + 10) / 2) / 2},
+		{Title: "Version", Width: ((m.window.width / 2) / 2) / 2},
 	}
 
 	var rows []table.Row
