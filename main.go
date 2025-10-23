@@ -295,8 +295,15 @@ func drawPackageInstallScreen(m *model) string {
 		Width(m.window.width - 5).
 		Render(m.packageInput.View())
 
+	jointText := lipgloss.JoinHorizontal(lipgloss.Top,
+		lipgloss.NewStyle().Width(m.window.width/2).Render(m.info),
+		lipgloss.NewStyle().Width(m.window.width/2).Align(lipgloss.Right).Render(""),
+	)
+
+	var bottomText = lipgloss.NewStyle().Width(m.window.width).Height((m.window.height / 2) - 3).AlignVertical(lipgloss.Bottom).Render(jointText)
+
 	return lipgloss.NewStyle().Width(m.window.width).AlignHorizontal(lipgloss.Center).
-		Render(fmt.Sprintf("%v\n%v\n", inputStyle, m.remotePackageTable.View()))
+		Render(fmt.Sprintf("%v\n%v\n%v", inputStyle, m.remotePackageTable.View(), bottomText))
 }
 
 func main() {
