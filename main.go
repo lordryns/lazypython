@@ -49,7 +49,7 @@ type model struct {
 type InfoMsg string
 
 func updateSpinnerType(m *model) {
-	var spinners = []spinner.Spinner{spinner.Dot, spinner.Globe, spinner.Line, spinner.MiniDot, spinner.Jump, spinner.Ellipsis, spinner.Hamburger, spinner.Meter, spinner.Monkey, spinner.Moon, spinner.Points, spinner.Pulse}
+	var spinners = []spinner.Spinner{spinner.Dot, spinner.Globe, spinner.Line, spinner.MiniDot, spinner.Jump, spinner.Ellipsis, spinner.Meter, spinner.Monkey, spinner.Moon, spinner.Points, spinner.Pulse}
 	var gen = rand.Intn(len(spinners) - 1)
 	m.spinner.Spinner = spinners[gen]
 }
@@ -191,6 +191,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updateRemotePackageTable(&m, m.filteredPackages)
 		if !m.remotePackagesIndexedSuccessfully {
 			m.info = fmt.Sprintf("%v Indexing remote packages on PYPI...", m.spinner.View())
+		} else {
+			m.info = "Remote packages indexed successfully!"
 		}
 		if m.openPackageInstallScreen {
 			if m.packageInput.Focused() {
