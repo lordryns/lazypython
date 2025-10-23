@@ -205,16 +205,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var query = strings.TrimSpace(m.packageInput.Value())
 				m.filteredPackages = nil
 				if query != "" {
+					query = strings.ToLower(query)
 					var exactMatches []string
 					var closestMatches []string
 					var looseMatches []string
 					for _, pkg := range pythonPackages {
 						switch {
-						case query == pkg:
+						case query == strings.ToLower(pkg):
 							exactMatches = append(exactMatches, pkg)
-						case strings.HasPrefix(pkg, query):
+						case strings.HasPrefix(strings.ToLower(pkg), query):
 							closestMatches = append(closestMatches, pkg)
-						case strings.Contains(pkg, query):
+						case strings.Contains(strings.ToLower(pkg), query):
 							looseMatches = append(looseMatches, pkg)
 						}
 
