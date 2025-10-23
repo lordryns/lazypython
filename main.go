@@ -12,6 +12,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var remotePackagesIndexedSuccessfully = false
+
 type pythonPackage struct {
 	path    string
 	version string
@@ -81,7 +83,8 @@ type LoadedPythonManager struct {
 func fetchPackagesFromindexAsync(m *model) tea.Cmd {
 	return func() tea.Msg {
 		fetchPackagesFromIndex()
-		m.remotePackagesIndexedSuccessfully = true
+		m.info = "Done!"
+		remotePackagesIndexedSuccessfully = true
 		return InfoMsg("Remote packages indexed successfully!")
 	}
 }
@@ -189,26 +192,45 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 
 		updateRemotePackageTable(&m, m.filteredPackages)
-		if !m.remotePackagesIndexedSuccessfully {
-			m.info = fmt.Sprintf("%v Indexing remote packages on PYPI...", m.spinner.View())
-		} else {
+		if remotePackagesIndexedSuccessfully {
 			m.info = "Remote packages indexed successfully!"
+			if len(pythonPackages) < 50 {
+				m.info = "Indexing process failed! restart the app to resolve"
+			}
+		} else {
+			m.info = fmt.Sprintf("%v Indexing remote packages on PYPI...", m.spinner.View())
 		}
 		if m.openPackageInstallScreen {
 			if m.packageInput.Focused() {
 				var query = strings.TrimSpace(m.packageInput.Value())
 				m.filteredPackages = nil
 				if query != "" {
+					var exactMatches []string
+					var closestMatches []string
+					var looseMatches []string
 					for _, pkg := range pythonPackages {
-						if strings.Contains(pkg, query) {
-							m.filteredPackages = append(m.filteredPackages, pkg)
+						switch {
+						case query == pkg:
+							exactMatches = append(exactMatches, pkg)
+						case strings.HasPrefix(pkg, query):
+							closestMatches = append(closestMatches, pkg)
+						case strings.Contains(pkg, query):
+							looseMatches = append(looseMatches, pkg)
 						}
+
 					}
+					m.filteredPackages = nil
+					m.filteredPackages = append(m.filteredPackages, exactMatches...)
+					m.filteredPackages = append(m.filteredPackages, closestMatches...)
+					m.filteredPackages = append(m.filteredPackages, looseMatches...)
 					m.remotePackageTable.SetCursor(0)
 				}
 			}
 
+		} else {
+			m.filteredPackages = nil
 		}
+
 		return m, cmd
 	}
 
