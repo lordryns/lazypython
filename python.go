@@ -2,11 +2,12 @@ package main
 
 import (
 	"bufio"
-	"github.com/pelletier/go-toml/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 func generatePackageDetails() (pythonManager, error) {
@@ -55,7 +56,7 @@ func generatePackageDetails() (pythonManager, error) {
 		pkgs.packages = append(pkgs.packages, pkg)
 	}
 
-	pkgs.scripts = getPythonScriptsFromDisk()
+	pkgs.scripts = getPythonScriptsFromDisk(".")
 
 	return pkgs, nil
 }
@@ -71,50 +72,53 @@ func getPythonVersion() string {
 	return string(output)
 }
 
-func getPythonScriptsFromDisk() []pythonScript {
+func getPythonScriptsFromDisk(path string) []pythonScript {
 	var scripts []pythonScript
-	var cwd, cerr = os.Getwd()
-	if cerr != nil {
-		return scripts
-	}
-	var files, err = os.ReadDir(cwd)
+
+	files, err := os.ReadDir(path)
 	if err != nil {
 		return scripts
 	}
 
-	var filteredFiles []os.DirEntry
-
 	for _, file := range files {
-		if strings.HasSuffix(file.Name(), ".py") {
-			filteredFiles = append(filteredFiles, file)
+		fullPath := filepath.Join(path, file.Name())
+
+		if file.IsDir() && file.Name() != ".venv" {
+			scripts = append(scripts, getPythonScriptsFromDisk(fullPath)...)
+			continue
 		}
-	}
 
-	for _, file := range filteredFiles {
-		var flen int
-		var funcCount int
-		var classCount int
-		var nfile, lerr = os.Open(filepath.Join(cwd, file.Name()))
-		if lerr == nil {
-			var scanner = bufio.NewScanner(nfile)
-			for scanner.Scan() {
-				flen += 1
-				if strings.HasPrefix(scanner.Text(), "def") {
-					funcCount += 1
-				}
+		if !strings.HasSuffix(file.Name(), ".py") {
+			continue
+		}
 
-				if strings.HasPrefix(scanner.Text(), "class") {
-					classCount += 1
-				}
+		nfile, err := os.Open(fullPath)
+		if err != nil {
+			continue
+		}
+		defer nfile.Close()
+
+		scanner := bufio.NewScanner(nfile)
+		var flen, funcCount, classCount int
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			flen++
+			if strings.HasPrefix(line, "def ") {
+				funcCount++
 			}
-
-			if err := scanner.Err(); err != nil {
-				continue
+			if strings.HasPrefix(line, "class ") {
+				classCount++
 			}
 		}
-		var s = pythonScript{path: file.Name(), lines: flen, functions: funcCount, classes: classCount}
-		scripts = append(scripts, s)
 
+		if err := scanner.Err(); err == nil {
+			scripts = append(scripts, pythonScript{
+				path:      fullPath,
+				lines:     flen,
+				functions: funcCount,
+				classes:   classCount,
+			})
+		}
 	}
 
 	return scripts
