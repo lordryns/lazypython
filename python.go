@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"github.com/pelletier/go-toml/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,11 +19,40 @@ func generatePackageDetails() (pythonManager, error) {
 
 	var sres = strings.Split(string(fres), "\n")
 
+	var uvConfig = readTomlFile()
+	var uvPackageStrings []pythonPackage
+
+	for _, pkgS := range uvConfig.Project.Dependencies {
+		var sS = strings.Split(pkgS, ">=")
+		if len(sS) > 1 {
+			uvPackageStrings = append(uvPackageStrings,
+				pythonPackage{path: strings.TrimSpace(sS[0]), version: sS[1]},
+			)
+		}
+	}
+
 	for _, s := range sres {
 		var split = strings.Split(s, "==")
 		if len(split) > 1 {
 			pkgs.packages = append(pkgs.packages, pythonPackage{path: split[0], version: split[1]})
 		}
+	}
+
+	var checkIfPackageExists = func(pkg string) bool {
+		for _, p := range pkgs.packages {
+			if p.path == pkg {
+				return true
+			}
+		}
+
+		return false
+	}
+	for _, pkg := range uvPackageStrings {
+		if checkIfPackageExists(pkg.path) {
+			continue
+		}
+
+		pkgs.packages = append(pkgs.packages, pkg)
 	}
 
 	pkgs.scripts = getPythonScriptsFromDisk()
@@ -88,4 +118,41 @@ func getPythonScriptsFromDisk() []pythonScript {
 	}
 
 	return scripts
+}
+
+type Config struct {
+	Project struct {
+		Name           string
+		Version        string
+		Description    string
+		Readme         string
+		RequiresPython string `toml:"requires-python"`
+		Dependencies   []string
+	}
+	DependencyGroups map[string][]string `toml:"dependency-groups"`
+	Tool             struct {
+		Uv struct {
+			IndexURL   string `toml:"index-url"`
+			PythonPath string `toml:"python-path"`
+			CacheDir   string `toml:"cache-dir"`
+		}
+	}
+}
+
+func readTomlFile() Config {
+	// i'm not as familiar with uv so i'll just put this check here in case
+	var tomlName string
+	var _, err = os.Stat("uv.toml")
+	if !os.IsNotExist(err) {
+		tomlName = "uv.toml"
+	} else {
+		tomlName = "pyproject.toml"
+	}
+	data, err := os.ReadFile(tomlName)
+
+	var cfg Config
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+
+	}
+	return cfg
 }
