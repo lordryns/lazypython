@@ -412,7 +412,7 @@ func drawHomeScreen(m *model) string {
 }
 
 func drawPackageInstallScreen(m *model) string {
-	header := lipgloss.NewStyle().
+	var header = lipgloss.NewStyle().
 		Width(m.window.width - 10).
 		Foreground(lipgloss.Color("229")).
 		Bold(true).
@@ -426,7 +426,7 @@ func drawPackageInstallScreen(m *model) string {
 		Render(header)
 
 	m.packageInput.Width = m.window.width - 27
-	inputBox := lipgloss.NewStyle().
+	var inputBox = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("63")).
 		Padding(0, 1).
@@ -451,10 +451,12 @@ func drawPackageInstallScreen(m *model) string {
 		Render("Package: \nNo package selected yet")
 
 	var jointBox = lipgloss.JoinHorizontal(lipgloss.Center, tableBox, packageInfoBox)
-	footer := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		MarginTop(1).
-		Render(fmt.Sprintf("Type to filter | Enter to install | Esc to cancel\n%s", m.info))
+	var footer = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("63")).
+		Padding(0, 1).
+		Width(m.window.width - 8).
+		Render(fmt.Sprintf("Type to filter | Enter to install | Esc to cancel * %s", lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(m.info)))
 
 	screen := lipgloss.JoinVertical(
 		lipgloss.Left,
