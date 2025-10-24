@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bufio"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -19,9 +22,10 @@ func generatePackageDetails() (pythonManager, error) {
 		var split = strings.Split(s, "==")
 		if len(split) > 1 {
 			pkgs.packages = append(pkgs.packages, pythonPackage{path: split[0], version: split[1]})
-
 		}
 	}
+
+	pkgs.scripts = getPythonScriptsFromDisk()
 
 	return pkgs, nil
 }
@@ -35,4 +39,36 @@ func getPythonVersion() string {
 	}
 
 	return string(output)
+}
+
+func getPythonScriptsFromDisk() []pythonScript {
+	var scripts []pythonScript
+	var cwd, cerr = os.Getwd()
+	if cerr != nil {
+		return scripts
+	}
+	var files, err = os.ReadDir(cwd)
+	if err != nil {
+		return scripts
+	}
+
+	for _, file := range files {
+		var flen int
+		var nfile, lerr = os.Open(filepath.Join(cwd, file.Name()))
+		if lerr == nil {
+			var scanner = bufio.NewScanner(nfile)
+			for scanner.Scan() {
+				flen += 1
+			}
+
+			if err := scanner.Err(); err != nil {
+				continue
+			}
+		}
+		var s = pythonScript{path: file.Name(), lines: flen, functions: 0, classes: 0}
+		scripts = append(scripts, s)
+
+	}
+
+	return scripts
 }

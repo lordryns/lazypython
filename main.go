@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -19,9 +20,17 @@ type pythonPackage struct {
 	version string
 }
 
+type pythonScript struct {
+	path      string
+	lines     int
+	functions int
+	classes   int
+}
+
 type pythonManager struct {
 	version  string
 	packages []pythonPackage
+	scripts  []pythonScript
 }
 
 type dimension struct {
@@ -47,6 +56,8 @@ type model struct {
 	remotePackageTableIndex           int
 	remotePackagesIndexedSuccessfully bool
 	localPackages                     []pythonPackage
+	pythonScriptTable                 table.Model
+	focusOnLocalPackageTable          bool
 }
 
 type InfoMsg string
@@ -66,7 +77,7 @@ func initialize() model {
 	installEntry.CharLimit = -1
 	installEntry.Focus()
 	installEntry.Placeholder = "Enter package name..."
-	var m = model{spinner: _spinner, info: "Hello from Lazypython", packageInput: installEntry, showHomeScreen: true, managerInUse: "pip"}
+	var m = model{spinner: _spinner, info: "Hello from Lazypython", packageInput: installEntry, showHomeScreen: true, managerInUse: "pip", focusOnLocalPackageTable: true}
 	updateSpinnerType(&m)
 
 	return m
@@ -160,6 +171,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "tab":
+			if m.showHomeScreen {
+				m.focusOnLocalPackageTable = !m.focusOnLocalPackageTable
+				if m.focusOnLocalPackageTable {
+					m.pythonScriptTable.Blur()
+					m.packageTable.Focus()
+					m.packageTable.SetCursor(0)
+					m.pythonScriptTable.SetCursor(-1)
+				} else {
+					m.pythonScriptTable.Focus()
+					m.packageTable.Blur()
+					m.pythonScriptTable.SetCursor(0)
+					m.packageTable.SetCursor(-1)
+				}
+			}
 			if m.openPackageInstallScreen {
 				if m.packageInput.Focused() {
 					m.packageInput.Blur()
@@ -184,9 +209,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, fetchPackagesAsync()
 
 	case LoadedPythonManager:
-
 		updateSpinnerType(&m)
 		drawPythonPackageTable(&m, msg.pacman)
+		drawPythonScriptsTable(&m, msg.pacman)
 		m.localPackages = msg.pacman.packages
 		m.err = msg.err
 		if msg.err != nil {
@@ -247,7 +272,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
-	m.packageTable, cmd = m.packageTable.Update(msg)
+	if m.focusOnLocalPackageTable {
+		m.packageTable, cmd = m.packageTable.Update(msg)
+	} else {
+		m.pythonScriptTable, cmd = m.pythonScriptTable.Update(msg)
+	}
 
 	if m.openPackageInstallScreen {
 		m.packageInput, cmd = m.packageInput.Update(msg)
@@ -271,7 +300,7 @@ func (m model) View() string {
 
 	if m.openHelpMenu {
 		return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center, lipgloss.Center).
-			Render("HELP\nUse Ctrl + h or the Esc key to close this screen\nCtrl + c to exit the application\nCtrl + p to find (and install) a package")
+			Render("HELP\nUse Ctrl + h or the Esc key to close this screen\nCtrl + c to exit the application\nCtrl + p to find (and install) a package\nUse p to toggle package managers while in home screen")
 	}
 
 	if m.openPackageInstallScreen {
@@ -299,33 +328,42 @@ func drawHomeScreen(m *model) string {
 	var header = lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		lipgloss.NewStyle().
-			Width(m.window.width/2).Align(lipgloss.Left).Padding(0, 1).
+			Width(m.window.width/2).
+			Align(lipgloss.Left).
 			Render(infoText),
 		lipgloss.NewStyle().
 			Width(m.window.width/2).
 			Align(lipgloss.Right).
-			Padding(0, 1).
 			Render(helpText),
 	)
 
 	header = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).BorderForeground(borderColor).
-		Width(m.window.width - 2).Render(header)
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1).
+		Width(m.window.width - 2).
+		Render(header)
+
+	mainHeight := int(float64(m.window.height) * 0.45)
 
 	var tableView = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
-		Padding(1, 2).
+		Padding(0, 1).
 		Width(m.window.width/2 - 2).
+		Height(mainHeight).
 		Render(m.packageTable.View())
 
 	var infoFrame = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
-		Padding(1, 2).
+		Padding(0, 1).
 		Width(m.window.width/2 - 2).
-		Render(fmt.Sprintf("Python Version: %v\nInstalled Packages: %v\nPackage Manager: %v",
-			getPythonVersion(), len(m.localPackages), m.managerInUse))
+		Height(mainHeight).
+		Render(fmt.Sprintf(
+			"Python Version: %v\nInstalled Packages: %v\nPackage Manager: %v",
+			getPythonVersion(), len(m.localPackages), m.managerInUse,
+		))
 
 	var mainContent = lipgloss.JoinHorizontal(
 		lipgloss.Top,
@@ -333,21 +371,40 @@ func drawHomeScreen(m *model) string {
 		infoFrame,
 	)
 
-	var footer = lipgloss.NewStyle().
+	scriptHeight := int(float64(m.window.height) * 0.25)
+	if scriptHeight < 6 {
+		scriptHeight = 6
+	}
+
+	m.pythonScriptTable.SetHeight(scriptHeight)
+
+	var pythonScriptsSection = lipgloss.NewStyle().
+		MarginTop(0).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1).
+		Width(m.window.width - 2).
+		Height(scriptHeight).
+		Render(m.pythonScriptTable.View())
+
+	var footerText = lipgloss.NewStyle().
 		Width(m.window.width - 2).
 		Align(lipgloss.Center).
 		Foreground(lipgloss.Color("240")).
-		Render("j k Navigate | Enter Select | Ctrl+c Quit")
-	footer = lipgloss.NewStyle().
+		Render("j k Navigate | Tab Switch | Ctrl+C Quit")
+
+	var footer = lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(borderColor).
-		Render(footer)
+		Padding(0, 1).
+		Width(m.window.width - 2).
+		Render(footerText)
 
-	footer = lipgloss.NewStyle().Height((m.window.height / 2) - 8).Width(m.window.width).AlignVertical(lipgloss.Bottom).Render(footer)
 	var screen = lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
 		mainContent,
+		pythonScriptsSection,
 		footer,
 	)
 
@@ -447,4 +504,37 @@ func drawPythonPackageTable(m *model, pman pythonManager) {
 		Background(lipgloss.Color("57")).
 		Bold(false)
 	m.packageTable.SetStyles(style)
+}
+
+func drawPythonScriptsTable(m *model, pman pythonManager) {
+	columns := []table.Column{
+		{Title: "Script Name", Width: m.window.width / 2},
+		{Title: "Lines", Width: ((m.window.width / 2) / 2) / 2},
+		{Title: "Functions", Width: ((m.window.width / 2) / 2) / 2},
+		{Title: "Classes", Width: ((m.window.width / 2) / 2) / 2},
+	}
+
+	var rows []table.Row
+	for _, script := range pman.scripts {
+		rows = append(rows, table.Row{script.path, strconv.Itoa(script.lines), strconv.Itoa(script.functions), strconv.Itoa(script.classes)})
+	}
+
+	m.pythonScriptTable = table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(true),
+		table.WithHeight(m.window.height/2),
+	)
+
+	style := table.DefaultStyles()
+	style.Header = style.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(false)
+	style.Selected = style.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+	m.pythonScriptTable.SetStyles(style)
 }
