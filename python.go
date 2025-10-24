@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -159,4 +160,46 @@ func readTomlFile() Config {
 
 	}
 	return cfg
+}
+
+type InstallResponseObject struct {
+	content string
+	isErr   bool
+}
+
+func runInstallCommandAndRespond(command string, pkg string) InstallResponseObject {
+	var obj InstallResponseObject
+
+	if command == "uv" {
+		command = "uv add"
+	}
+	var cmd = exec.Command(command, pkg)
+
+	var stdout, _ = cmd.StdoutPipe()
+	var stderr, _ = cmd.StderrPipe()
+
+	if err := cmd.Start(); err != nil {
+		obj.content = err.Error()
+		obj.isErr = true
+		return obj
+	}
+
+	outBytes, _ := io.ReadAll(stdout)
+	errBytes, _ := io.ReadAll(stderr)
+
+	if err := cmd.Wait(); err != nil {
+		obj.content = err.Error()
+		obj.isErr = true
+		return obj
+
+	}
+
+	if len(errBytes) > 0 {
+		obj.content = string(errBytes)
+		obj.isErr = true
+	} else {
+		obj.content = string(outBytes)
+
+	}
+	return obj
 }

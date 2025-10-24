@@ -58,6 +58,7 @@ type model struct {
 	localPackages                     []pythonPackage
 	pythonScriptTable                 table.Model
 	focusOnLocalPackageTable          bool
+	remotePackageSelected             PackageInfo
 }
 
 type InfoMsg string
@@ -108,6 +109,13 @@ func fetchPackagesAsync() tea.Cmd {
 	}
 }
 
+func runInstallCommandAndRespondAsync(m *model) tea.Cmd {
+	return func() tea.Msg {
+		var res = runInstallCommandAndRespond(m.managerInUse, m.remotePackageTable.SelectedRow()[0])
+		return res
+	}
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -145,6 +153,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.openPackageInstallScreen {
 				m.openPackageInstallScreen = false
+				m.remotePackageSelected = PackageInfo{}
 			}
 
 			if !m.openHelpMenu || !m.openPackageInstallScreen {
@@ -196,6 +205,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				m.focusedOnRemotePackageTable = !m.focusedOnRemotePackageTable
 			}
+
+		case "enter":
+			if m.openPackageInstallScreen {
+				if m.remotePackageTable.Focused() {
+					m.remotePackageSelected = getPackageInfo(m.remotePackageTable.SelectedRow()[0])
+				}
+			}
+
+		case "ctrl+a":
+			if m.openPackageInstallScreen {
+				if m.remotePackageTable.Focused() {
+					m.info = fmt.Sprintf("%v Installing %v...", m.spinner.View(), m.remotePackageTable.SelectedRow()[0])
+					return m, runInstallCommandAndRespondAsync(&m)
+				}
+			}
+
 		}
 
 	case tea.WindowSizeMsg:
@@ -207,6 +232,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loadingState = true
 		return m, fetchPackagesAsync()
+
+	case InstallResponseObject:
+		updateSpinnerType(&m)
+		m.info = lipgloss.NewStyle().Foreground(lipgloss.Color(func() string {
+			if msg.isErr {
+				return "1"
+			} else {
+				return "2"
+			}
+		}())).Render(msg.content)
 
 	case LoadedPythonManager:
 		updateSpinnerType(&m)
@@ -221,21 +256,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.showPackageTable = true
 
 	case InfoMsg:
+		m.remotePackagesIndexedSuccessfully = true
 		m.info = string(msg)
+		if len(pythonPackages) < 50 {
+			m.info = "Indexing process failed! restart the app to resolve"
+		}
 
 	default:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 
 		updateRemotePackageTable(&m, m.filteredPackages)
-		if remotePackagesIndexedSuccessfully {
-			m.info = "Remote packages indexed successfully!"
-			if len(pythonPackages) < 50 {
-				m.info = "Indexing process failed! restart the app to resolve"
-			}
-		} else {
+
+		if !m.remotePackagesIndexedSuccessfully {
 			m.info = fmt.Sprintf("%v Indexing remote packages on PYPI...", m.spinner.View())
 		}
+
 		if m.openPackageInstallScreen {
 			if m.packageInput.Focused() {
 				var query = strings.TrimSpace(m.packageInput.Value())
@@ -254,7 +290,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						case strings.Contains(strings.ToLower(pkg), query):
 							looseMatches = append(looseMatches, pkg)
 						}
-
 					}
 					m.filteredPackages = nil
 					m.filteredPackages = append(m.filteredPackages, exactMatches...)
@@ -263,14 +298,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.remotePackageTable.SetCursor(0)
 				}
 			}
-
 		} else {
 			m.filteredPackages = nil
 		}
 
 		return m, cmd
 	}
-
 	var cmd tea.Cmd
 	if m.focusOnLocalPackageTable {
 		m.packageTable, cmd = m.packageTable.Update(msg)
@@ -448,7 +481,22 @@ func drawPackageInstallScreen(m *model) string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("63")).
 		Padding(0, 1).
-		Render("Package: \nNo package selected yet")
+		Render(
+			fmt.Sprintf(
+				"Package name: %v\nPackage version: %v\n\nAuthor email: %v\n\nSummary: %v\n\nSize: %v bytes\n\nDownloads (Last Week): %v\n\nDownloads (Last Month): %v",
+				m.remotePackageSelected.Info.Name,
+				m.remotePackageSelected.Info.Version,
+				m.remotePackageSelected.Info.AuthorEmail,
+				m.remotePackageSelected.Info.Summary,
+				func() string {
+					if files, ok := m.remotePackageSelected.Releases[m.remotePackageSelected.Info.Version]; ok && len(files) > 0 {
+						return strconv.Itoa(files[0].Size)
+					}
+					return "Unknown"
+				}(),
+				m.remotePackageSelected.Downloads.LastWeek,
+				m.remotePackageSelected.Downloads.LastMonth,
+			))
 
 	var jointBox = lipgloss.JoinHorizontal(lipgloss.Center, tableBox, packageInfoBox)
 	var footer = lipgloss.NewStyle().
