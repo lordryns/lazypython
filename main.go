@@ -338,12 +338,12 @@ func drawHomeScreen(m *model) string {
 		Align(lipgloss.Center).
 		Foreground(lipgloss.Color("240")).
 		Render("j k Navigate | Enter Select | Ctrl+c Quit")
-
 	footer = lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(borderColor).
 		Render(footer)
 
+	footer = lipgloss.NewStyle().Height((m.window.height / 2) - 8).Width(m.window.width).AlignVertical(lipgloss.Bottom).Render(footer)
 	var screen = lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
