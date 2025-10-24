@@ -412,23 +412,65 @@ func drawHomeScreen(m *model) string {
 }
 
 func drawPackageInstallScreen(m *model) string {
-	m.packageInput.Width = m.window.width
-	var inputStyle = lipgloss.NewStyle().
+	header := lipgloss.NewStyle().
+		Width(m.window.width - 10).
+		Foreground(lipgloss.Color("229")).
+		Bold(true).
+		Align(lipgloss.Center).
+		Render("Install Python Package")
+
+	header = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("63")).
+		Padding(0, 1).
+		Render(header)
+
+	m.packageInput.Width = m.window.width - 27
+	inputBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("63")).
 		Padding(0, 1).
-		Width(m.window.width - 5).
-		Render(m.packageInput.View())
+		MarginTop(1).
+		Render("Package name: " + m.packageInput.View())
 
-	jointText := lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().Width(m.window.width/2).Render(m.info),
-		lipgloss.NewStyle().Width(m.window.width/2).Align(lipgloss.Right).Render(""),
+	var tableHeight = m.window.height/2 - 20
+	var tableBox = lipgloss.NewStyle().
+		Width(m.window.width/2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("63")).
+		Padding(0, 1).
+		Height(tableHeight).
+		Render(m.remotePackageTable.View())
+
+	var packageInfoBox = lipgloss.NewStyle().
+		Width(m.window.width/2-10).
+		Height((m.window.height/2)+1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("63")).
+		Padding(0, 1).
+		Render("Package: \nNo package selected yet")
+
+	var jointBox = lipgloss.JoinHorizontal(lipgloss.Center, tableBox, packageInfoBox)
+	footer := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("244")).
+		MarginTop(1).
+		Render(fmt.Sprintf("Type to filter | Enter to install | Esc to cancel\n%s", m.info))
+
+	screen := lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		inputBox,
+		jointBox,
+		footer,
 	)
 
-	var bottomText = lipgloss.NewStyle().Width(m.window.width).Height((m.window.height / 2) - 3).AlignVertical(lipgloss.Bottom).Render(jointText)
-
-	return lipgloss.NewStyle().Width(m.window.width).AlignHorizontal(lipgloss.Center).
-		Render(fmt.Sprintf("%v\n%v\n%v", inputStyle, m.remotePackageTable.View(), bottomText))
+	return lipgloss.NewStyle().
+		Width(m.window.width).
+		Height(m.window.height).
+		Padding(1, 2).
+		AlignHorizontal(lipgloss.Center).
+		AlignVertical(lipgloss.Top).
+		Render(screen)
 }
 
 func main() {
@@ -490,6 +532,7 @@ func drawPythonPackageTable(m *model, pman pythonManager) {
 		table.WithColumns(columns),
 		table.WithRows(rows),
 		table.WithFocused(true),
+		table.WithWidth(m.window.width/2),
 		table.WithHeight(m.window.height/2),
 	)
 
