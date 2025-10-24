@@ -52,20 +52,37 @@ func getPythonScriptsFromDisk() []pythonScript {
 		return scripts
 	}
 
+	var filteredFiles []os.DirEntry
+
 	for _, file := range files {
+		if strings.HasSuffix(file.Name(), ".py") {
+			filteredFiles = append(filteredFiles, file)
+		}
+	}
+
+	for _, file := range filteredFiles {
 		var flen int
+		var funcCount int
+		var classCount int
 		var nfile, lerr = os.Open(filepath.Join(cwd, file.Name()))
 		if lerr == nil {
 			var scanner = bufio.NewScanner(nfile)
 			for scanner.Scan() {
 				flen += 1
+				if strings.HasPrefix(scanner.Text(), "def") {
+					funcCount += 1
+				}
+
+				if strings.HasPrefix(scanner.Text(), "class") {
+					classCount += 1
+				}
 			}
 
 			if err := scanner.Err(); err != nil {
 				continue
 			}
 		}
-		var s = pythonScript{path: file.Name(), lines: flen, functions: 0, classes: 0}
+		var s = pythonScript{path: file.Name(), lines: flen, functions: funcCount, classes: classCount}
 		scripts = append(scripts, s)
 
 	}
