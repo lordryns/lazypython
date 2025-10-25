@@ -8,7 +8,7 @@ import (
 )
 
 const cacheFileName = "pypi_packages_cache.json"
-const cacheMaxAge = 24 * time.Hour
+const cacheMaxAge = (24 * 3) * time.Hour
 
 type PackageCache struct {
 	Packages  []string  `json:"packages"`
