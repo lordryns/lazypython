@@ -60,6 +60,8 @@ type model struct {
 	pythonScriptTable                 table.Model
 	focusOnLocalPackageTable          bool
 	remotePackageSelected             PackageInfo
+	logs                              []string
+	showLoggingScreen                 bool
 }
 
 type InfoMsg string
@@ -163,6 +165,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if !m.openHelpMenu || !m.openPackageInstallScreen {
+				m.showHomeScreen = true
+			}
+
+			if m.showLoggingScreen {
+				m.showLoggingScreen = false
+			}
+
+		case "ctrl+l":
+			m.showLoggingScreen = !m.showLoggingScreen
+			m.showHomeScreen = false
+			m.openPackageInstallScreen = false
+			m.openHelpMenu = false
+			if !m.showLoggingScreen {
 				m.showHomeScreen = true
 			}
 
@@ -358,6 +373,10 @@ func (m model) View() string {
 
 	if m.showHomeScreen {
 		return drawHomeScreen(&m)
+	}
+
+	if m.showLoggingScreen {
+		return drawLoggingPage(&m)
 	}
 
 	return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Align(lipgloss.Center, lipgloss.Center).Render("Somehow this page showed up even though it isn't supposed to, press the Esc key to return to Home... restart if this persists.")
@@ -646,4 +665,8 @@ func drawPythonScriptsTable(m *model, pman pythonManager) {
 		Background(lipgloss.Color("57")).
 		Bold(false)
 	m.pythonScriptTable.SetStyles(style)
+}
+
+func drawLoggingPage(m *model) string {
+	return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Render("Logger!")
 }
