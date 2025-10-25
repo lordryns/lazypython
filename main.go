@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -114,6 +115,7 @@ func fetchPackagesAsync() tea.Cmd {
 }
 
 func runInstallCommandAndRespondAsync(m *model) tea.Cmd {
+	m.info = fmt.Sprintf("%v Installing %v...", m.spinner.View(), m.remotePackageTable.SelectedRow()[0])
 	return func() tea.Msg {
 		var res = runInstallCommandAndRespond(m.managerInUse, m.remotePackageTable.SelectedRow()[0])
 		return res
@@ -220,7 +222,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+a":
 			if m.openPackageInstallScreen {
 				if m.remotePackageTable.Focused() {
-					m.info = fmt.Sprintf("%v Installing %v...", m.spinner.View(), m.remotePackageTable.SelectedRow()[0])
 					return m, runInstallCommandAndRespondAsync(&m)
 				}
 			}
@@ -239,14 +240,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case InstallResponseObject:
 		updateSpinnerType(&m)
-		m.info = lipgloss.NewStyle().Foreground(lipgloss.Color(func() string {
-			if msg.isErr {
-				return "1"
-			} else {
-				return "2"
-			}
-		}())).Render(msg.content)
-
+		if msg.isErr {
+			m.err = errors.New(msg.content)
+			m.info = "Failed to install package! Ctrl + L for logs"
+		} else {
+			m.info = "Package installed successfully!"
+		}
 	case LoadedPythonManager:
 		updateSpinnerType(&m)
 		drawPythonPackageTable(&m, msg.pacman)
@@ -521,7 +520,7 @@ func drawPackageInstallScreen(m *model) string {
 		BorderForeground(lipgloss.Color("63")).
 		Padding(0, 1).
 		Width(m.window.width - 8).
-		Render(fmt.Sprintf("Type to filter | Enter to install | Esc to cancel * %s", lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(m.info)))
+		Render(fmt.Sprintf("Type to filter | Ctrl+A to install | Esc to cancel * %s", lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(m.info)))
 
 	screen := lipgloss.JoinVertical(
 		lipgloss.Left,
