@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
@@ -26,6 +27,12 @@ type pythonScript struct {
 	lines     int
 	functions int
 	classes   int
+}
+
+type LogObject struct {
+	Level   string
+	Time    string
+	Message string
 }
 
 type pythonManager struct {
@@ -60,8 +67,9 @@ type model struct {
 	pythonScriptTable                 table.Model
 	focusOnLocalPackageTable          bool
 	remotePackageSelected             PackageInfo
-	logs                              []string
+	logs                              []LogObject
 	showLoggingScreen                 bool
+	logTable                          table.Model
 }
 
 type InfoMsg string
@@ -180,6 +188,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.showLoggingScreen {
 				m.showHomeScreen = true
 			}
+			updateLoggingTable(&m)
 
 		case "down":
 			if m.openPackageInstallScreen {
@@ -257,6 +266,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updateSpinnerType(&m)
 		if msg.isErr {
 			m.err = errors.New(msg.content)
+			m.logs = append(m.logs, LogObject{Level: "Error", Time: time.Now().String(), Message: msg.content})
 			m.info = "Failed to install package! Ctrl + L for logs"
 		} else {
 			m.info = "Package installed successfully!"
@@ -285,7 +295,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 
 		updateRemotePackageTable(&m, m.filteredPackages)
-
 		if !m.remotePackagesIndexedSuccessfully {
 			m.info = fmt.Sprintf("%v Indexing remote packages on PYPI...", m.spinner.View())
 		}
@@ -347,7 +356,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	m.remotePackageTable, cmd = m.remotePackageTable.Update(msg)
-
+	m.logTable, cmd = m.logTable.Update(msg)
 	return m, cmd
 }
 
@@ -667,6 +676,63 @@ func drawPythonScriptsTable(m *model, pman pythonManager) {
 	m.pythonScriptTable.SetStyles(style)
 }
 
+func updateLoggingTable(m *model) {
+	var rows []table.Row
+	for _, log := range m.logs {
+		rows = append(rows, table.Row{log.Level, log.Time, log.Message})
+	}
+	m.logTable.SetRows(rows)
+}
+
 func drawLoggingPage(m *model) string {
-	return lipgloss.NewStyle().Width(m.window.width).Height(m.window.height).Render("Logger!")
+	if len(m.logTable.Columns()) == 0 {
+		var columns = []table.Column{
+			{Title: "Level", Width: 10},
+			{Title: "Time", Width: 40},
+			{Title: "Message", Width: m.window.width - 60},
+		}
+
+		var rows []table.Row
+		for _, log := range m.logs {
+			rows = append(rows, table.Row{log.Level, log.Time, log.Message})
+		}
+
+		m.logTable = table.New(
+			table.WithColumns(columns),
+			table.WithRows(rows),
+			table.WithFocused(true),
+			table.WithHeight(m.window.height-5),
+		)
+
+		var s = table.DefaultStyles()
+		s.Header = s.Header.
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("240")).
+			BorderBottom(true).
+			Bold(true)
+		s.Selected = s.Selected.
+			Foreground(lipgloss.Color("229")).
+			Background(lipgloss.Color("57")).
+			Bold(false)
+
+		m.logTable.SetStyles(s)
+	}
+
+	var header = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39")).
+		Padding(1, 0).
+		Render("Application Logs")
+
+	var footer = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Padding(1, 0).
+		Render("j/k: navigate • Esc: Home")
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		m.logTable.View(),
+		footer,
+	)
 }
