@@ -281,15 +281,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					var exactMatches []string
 					var closestMatches []string
 					var looseMatches []string
+					var pkgCount int
+					var nonExactCount int
 					for _, pkg := range pythonPackages {
 						switch {
 						case query == strings.ToLower(pkg):
+							pkgCount += 1
 							exactMatches = append(exactMatches, pkg)
-						case strings.HasPrefix(strings.ToLower(pkg), query):
+						case strings.HasPrefix(strings.ToLower(pkg), query) && nonExactCount < 29:
+							pkgCount += 1
+							nonExactCount += 1
 							closestMatches = append(closestMatches, pkg)
-						case strings.Contains(strings.ToLower(pkg), query):
+						case strings.Contains(strings.ToLower(pkg), query) && nonExactCount < 29:
+							pkgCount += 1
+							nonExactCount += 1
 							looseMatches = append(looseMatches, pkg)
 						}
+
+						if pkgCount > 30 {
+							break
+						}
+
 					}
 					m.filteredPackages = nil
 					m.filteredPackages = append(m.filteredPackages, exactMatches...)

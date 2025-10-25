@@ -170,11 +170,11 @@ type InstallResponseObject struct {
 func runInstallCommandAndRespond(command string, pkg string) InstallResponseObject {
 	var obj InstallResponseObject
 
-	if command == "uv" {
-		command = "uv add"
-	}
 	var cmd = exec.Command(command, pkg)
 
+	if command == "uv" {
+		cmd = exec.Command(command, "add", pkg)
+	}
 	var stdout, _ = cmd.StdoutPipe()
 	var stderr, _ = cmd.StderrPipe()
 
