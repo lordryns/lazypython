@@ -95,9 +95,13 @@ type LoadedPythonManager struct {
 
 func fetchPackagesFromindexAsync(m *model) tea.Cmd {
 	return func() tea.Msg {
+		if ok := toCacheOrNotToCache(); ok {
+			return InfoMsg("Packages loaded from cache!")
+		}
 		fetchPackagesFromIndex()
-		m.info = "Done!"
 		remotePackagesIndexedSuccessfully = true
+
+		savePackagesToCache(pythonPackages)
 		return InfoMsg("Remote packages indexed successfully!")
 	}
 }
@@ -284,15 +288,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					var pkgCount int
 					var nonExactCount int
 					for _, pkg := range pythonPackages {
+						var pkgLower = strings.ToLower(pkg)
 						switch {
-						case query == strings.ToLower(pkg):
+						case query == pkgLower:
 							pkgCount += 1
 							exactMatches = append(exactMatches, pkg)
-						case strings.HasPrefix(strings.ToLower(pkg), query) && nonExactCount < 29:
+						case strings.HasPrefix(pkgLower, query) && nonExactCount < 29:
 							pkgCount += 1
 							nonExactCount += 1
 							closestMatches = append(closestMatches, pkg)
-						case strings.Contains(strings.ToLower(pkg), query) && nonExactCount < 29:
+						case strings.Contains(pkgLower, query) && nonExactCount < 29:
 							pkgCount += 1
 							nonExactCount += 1
 							looseMatches = append(looseMatches, pkg)
